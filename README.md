@@ -222,6 +222,3 @@ All processing happens **locally on your machine**:
 
 ---
 
-## 📝 License
-
-This project is provided as-is for personal and educational use.
