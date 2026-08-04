@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local RAG · Qwen-2.5</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #131a23;
+      --panel-2: #1a2330;
+      --border: #253145;
+      --text: #dbe4ee;
+      --text-dim: #7c8ba1;
+      --accent: #4fd1c5;
+      --accent-dim: #2a5f5a;
+      --danger: #e5675f;
+      --success: #3dd68c;
+      --mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+      --sans: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+    }
+
+    .shell {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 32px 24px 60px;
+    }
+
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 28px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 18px;
+    }
+
+    header h1 {
+      font-size: 20px;
+      margin: 0;
+      letter-spacing: -0.02em;
+      font-weight: 600;
+    }
+
+    header h1 span {
+      color: var(--accent);
+    }
+
+    #status {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text-dim);
+    }
+
+    .dot.ok {
+      background: var(--accent);
+    }
+
+    .dot.bad {
+      background: var(--danger);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width:820px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+    }
+
+    .panel h2 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin: 0 0 14px;
+      font-weight: 600;
+    }
+
+    /* Folder info box */
+    .folder-info {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 14px;
+      line-height: 1.6;
+    }
+
+    .folder-info strong {
+      color: var(--accent);
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    /* Scan button */
+    #scanBtn {
+      width: 100%;
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 9px 14px;
+      font-family: var(--sans);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+      margin-bottom: 14px;
+    }
+
+    #scanBtn:hover {
+      background: var(--accent);
+      color: #06201d;
+    }
+
+    #scanBtn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    /* Scan result toast */
+    #scanResult {
+      font-family: var(--mono);
+      font-size: 11px;
+      border-radius: 6px;
+      padding: 7px 10px;
+      margin-bottom: 12px;
+      display: none;
+    }
+
+    #scanResult.ok {
+      background: rgba(61, 214, 140, .1);
+      color: var(--success);
+      border: 1px solid rgba(61, 214, 140, .25);
+    }
+
+    #scanResult.err {
+      background: rgba(229, 103, 95, .1);
+      color: var(--danger);
+      border: 1px solid rgba(229, 103, 95, .25);
+    }
+
+    /* File list */
+    #fileList {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 380px;
+      overflow-y: auto;
+    }
+
+    #fileList li {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 9px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .file-meta {
+      overflow: hidden;
+    }
+
+    .file-name {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-sub {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .del-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--danger);
+      border-radius: 6px;
+      width: 26px;
+      height: 26px;
+      cursor: pointer;
+      flex-shrink: 0;
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    .del-btn:hover {
+      background: rgba(229, 103, 95, .12);
+    }
+
+    .empty-note {
+      color: var(--text-dim);
+      font-size: 12px;
+      font-family: var(--mono);
+    }
+
+    /* chat */
+    #chatPanel {
+      display: flex;
+      flex-direction: column;
+      min-height: 560px;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding-right: 4px;
+      margin-bottom: 14px;
+    }
+
+    .msg {
+      max-width: 88%;
+    }
+
+    .msg.user {
+      align-self: flex-end;
+    }
+
+    .msg.bot {
+      align-self: flex-start;
+    }
+
+    .bubble {
+      padding: 11px 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .msg.user .bubble {
+      background: var(--accent-dim);
+      color: #eafffb;
+    }
+
+    .msg.bot .bubble {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+    }
+
+    .sources {
+      margin-top: 6px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .sources details summary {
+      cursor: pointer;
+    }
+
+    .source-item {
+      padding: 4px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .composer {
+      display: flex;
+      gap: 8px;
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+    }
+
+    .composer textarea {
+      flex: 1;
+      resize: none;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: var(--sans);
+      font-size: 14px;
+      min-height: 44px;
+      max-height: 140px;
+    }
+
+    .composer textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .send-btn {
+      background: var(--accent);
+      color: #06201d;
+      border: none;
+      border-radius: 8px;
+      padding: 0 20px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .send-btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    .placeholder {
+      color: var(--text-dim);
+      font-size: 13px;
+      text-align: center;
+      margin-top: 40px;
+      font-family: var(--mono);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="shell">
+    <header>
+      <h1>local<span>RAG</span> <span style="color:var(--text-dim);font-weight:400;font-size:14px;">/ lfm2.5-350m</span>
+      </h1>
+      <div id="status"><span class="dot" id="statusDot"></span><span id="statusText">checking...</span></div>
+    </header>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>Documents</h2>
+
+        <div class="folder-info">
+          <strong>📁 uploads/ folder</strong>
+          Drop .txt files into the <code>uploads/</code> folder, then click <em>Re-scan Folder</em> to index them.
+        </div>
+
+        <button id="scanBtn">⟳ Re-scan Folder</button>
+        <div id="scanResult"></div>
+
+        <ul id="fileList"></ul>
+      </div>
+
+      <div class="panel" id="chatPanel">
+        <h2>Ask your documents</h2>
+        <div id="messages">
+          <div class="placeholder">Add .txt files to the uploads/ folder, scan, then ask your questions here.</div>
+        </div>
+        <div class="composer">
+          <textarea id="questionInput" placeholder="Ask a question..." rows="1"></textarea>
+          <button class="send-btn" id="sendBtn">Ask</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = "";
+
+    const fileListEl = document.getElementById('fileList');
+    const messagesEl = document.getElementById('messages');
+    const questionInput = document.getElementById('questionInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const scanBtn = document.getElementById('scanBtn');
+    const scanResult = document.getElementById('scanResult');
+
+    // ── Scan folder ────────────────────────────────────────────────
+    scanBtn.addEventListener('click', async () => {
+      scanBtn.disabled = true;
+      scanBtn.textContent = 'Scanning...';
+      scanResult.style.display = 'none';
+      try {
+        const res = await fetch(`${API}/scan-folder`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Scan failed');
+
+        const newCount = data.ingested.length;
+        const skipCount = data.skipped.length;
+        const errCount = data.errors.length;
+
+        let msg = '';
+        if (newCount) msg += `✓ ${newCount} new file(s) ingested. `;
+        if (skipCount) msg += `${skipCount} already indexed. `;
+        if (errCount) msg += `⚠ ${errCount} error(s).`;
+        if (!newCount && !errCount) msg = msg || 'No new files found.';
+
+        scanResult.textContent = msg.trim();
+        scanResult.className = errCount ? 'err' : 'ok';
+        scanResult.style.display = 'block';
+
+        await loadFiles();
+      } catch (err) {
+        scanResult.textContent = 'Scan error: ' + err.message;
+        scanResult.className = 'err';
+        scanResult.style.display = 'block';
+      } finally {
+        scanBtn.disabled = false;
+        scanBtn.textContent = '⟳ Re-scan Folder';
+      }
+    });
+
+    // ── File list ──────────────────────────────────────────────────
+    async function loadFiles() {
+      const res = await fetch(`${API}/files`);
+      const files = await res.json();
+      fileListEl.innerHTML = '';
+      if (!files.length) {
+        fileListEl.innerHTML = `<li class="empty-note" style="border:none;background:none;">No files indexed yet</li>`;
+        return;
+      }
+      files.forEach(f => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+      <div class="file-meta">
+        <div class="file-name" title="${f.filename}">${f.filename}</div>
+        <div class="file-sub">${f.num_chunks} chunks</div>
+      </div>
+      <button class="del-btn" title="Remove from index">✕</button>
+    `;
+        li.querySelector('.del-btn').addEventListener('click', () => deleteFile(f.file_id, f.filename));
+        fileListEl.appendChild(li);
+      });
+    }
+
+    async function deleteFile(fileId, filename) {
+      if (!confirm(`Remove "${filename}" from the index? (The file on disk is NOT deleted.)`)) return;
+      const res = await fetch(`${API}/files/${fileId}`, { method: 'DELETE' });
+      if (res.ok) await loadFiles();
+      else alert('Delete failed');
+    }
+
+    // ── Chat ───────────────────────────────────────────────────────
+    function addMessage(role, text, sources) {
+      const placeholder = messagesEl.querySelector('.placeholder');
+      if (placeholder) placeholder.remove();
+
+      const wrap = document.createElement('div');
+      wrap.className = `msg ${role}`;
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = text;
+      wrap.appendChild(bubble);
+
+      if (sources && sources.length) {
+        const det = document.createElement('details');
+        det.className = 'sources';
+        const sum = document.createElement('summary');
+        sum.textContent = `${sources.length} source chunk(s)`;
+        det.appendChild(sum);
+        sources.forEach(s => {
+          const div = document.createElement('div');
+          div.className = 'source-item';
+          div.textContent = `${s.filename} · chunk #${s.chunk_index} — "${s.preview}..."`;
+          det.appendChild(div);
+        });
+        wrap.appendChild(det);
+      }
+
+      messagesEl.appendChild(wrap);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    async function sendQuestion() {
+      const q = questionInput.value.trim();
+      if (!q) return;
+      addMessage('user', q);
+      questionInput.value = '';
+      sendBtn.disabled = true;
+      sendBtn.textContent = '...';
+
+      try {
+        const res = await fetch(`${API}/query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: q, top_k: 4 })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Query failed');
+        addMessage('bot', data.answer, data.sources);
+      } catch (err) {
+        addMessage('bot', 'Error: ' + err.message);
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Ask';
+      }
+    }
+
+    sendBtn.addEventListener('click', sendQuestion);
+    questionInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendQuestion();
+      }
+    });
+
+    // ── Health ─────────────────────────────────────────────────────
+    async function checkHealth() {
+      try {
+        const res = await fetch(`${API}/health`);
+        const data = await res.json();
+        if (data.lm_studio === 'connected') {
+          statusDot.className = 'dot ok';
+          statusText.textContent = 'LM Studio connected';
+        } else {
+          statusDot.className = 'dot bad';
+          statusText.textContent = 'LM Studio not reachable';
+        }
+      } catch (err) {
+        statusDot.className = 'dot bad';
+        statusText.textContent = 'Backend not reachable';
+      }
+    }
+
+    loadFiles();
+    checkHealth();
+    setInterval(checkHealth, 15000);
+  </script>
+</body>
+
+</html>
